@@ -1,0 +1,23 @@
+# Changelog
+
+Semua perubahan penting dicatat di file ini.
+
+Format mengacu ke Keep a Changelog, dan versioning mengikuti SemVer.
+
+## [Unreleased]
+
+### Added
+- -
+
+### Changed
+- -
+
+### Fixed
+- -
+
+## [1.0.0] - 2026-09-02
+
+### Added
+- Firmware awal PSU monitor (V/A/W/mAh-Ah)
+- Fitur HOLD dan ZERO+RESET
+- Anti-flicker display
