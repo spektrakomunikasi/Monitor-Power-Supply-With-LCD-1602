@@ -1,0 +1,35 @@
+psu-monitor/
+├─ firmware/
+│  ├─ nano_ina226_psu_service_final_v5_dot_ok_low_flicker.ino
+│  └─ releases/
+│     └─ v1.0.0/
+│        ├─ firmware.ino
+│        └─ notes.txt
+├─ hardware/
+│  ├─ schematic/
+│  │  ├─ psu_monitor_schematic.pdf
+│  │  └─ psu_monitor_schematic_source.kicad_sch
+│  ├─ pcb/
+│  │  ├─ psu_monitor_pcb_source.kicad_pcb
+│  │  ├─ gerber/
+│  │  └─ drill/
+│  ├─ bom/
+│  │  └─ BOM_psu_monitor_v1.0.0.csv
+│  └─ mechanical/
+│     └─ front_panel_cutout.pdf
+├─ calibration/
+│  ├─ calibration_log.csv
+│  ├─ test_report_template.md
+│  └─ instruments_used.md
+├─ docs/
+│  ├─ pinout.md
+│  ├─ wiring.md
+│  ├─ operation.md
+│  └─ troubleshooting.md
+├─ production/
+│  ├─ checklist_assembly.md
+│  ├─ checklist_qc.md
+│  └─ serial_number_registry.csv
+├─ CHANGELOG.md
+├─ LICENSE
+└─ README.md
