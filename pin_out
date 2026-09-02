@@ -1,0 +1,12 @@
+# Pinout
+
+## Arduino Nano
+- A4 -> SDA (INA226 + LCD I2C)
+- A5 -> SCL (INA226 + LCD I2C)
+- D3 -> Push button ke GND (INPUT_PULLUP)
+- 5V -> VCC INA226, VCC LCD
+- GND -> GND INA226, GND LCD, GND button
+
+## I2C Address
+- INA226: `0x44` (default umum modul)
+- LCD 16x2 I2C: `0x27` (cek scanner bila beda)
