@@ -1,2 +1,4 @@
 date,unit_sn,firmware_version,shunt_ohm,v_offset,i_offset,ref_meter_model,test_voltage_v,test_current_a,measured_voltage_v,measured_current_a,error_voltage_pct,error_current_pct,operator,notes
 2026-09-02,SN0001,v1.0.0,0.005,0.00,0.00,,12.00,2.00,,,,,,,
+date,unit_sn,firmware_version,shunt_ohm,v_offset,i_offset,ref_meter_model,test_voltage_v,test_current_a,measured_voltage_v,measured_current_a,error_voltage_pct,error_current_pct,operator,notes
+2026-09-02,SN0001,v1.0.0,0.005,0.00,0.00,,12.00,2.00,,,,,,,
