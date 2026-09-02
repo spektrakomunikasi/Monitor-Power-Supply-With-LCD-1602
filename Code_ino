@@ -1,0 +1,258 @@
+#include <Wire.h>
+#include <INA226.h>
+#include <LiquidCrystal_I2C.h>
+#include <math.h>
+
+INA226 ina226(0x44);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ================= KONFIG =================
+const float SHUNT_OHM = 0.1f;
+const float V_OFFSET  = 0.00f;
+const float I_OFFSET  = 0.00f;
+
+const float ALPHA_V = 0.18f;
+const float ALPHA_I = 0.20f;
+const float I_DEADBAND_A = 0.005f;
+
+const byte BTN_PIN = 3;
+const unsigned long DEBOUNCE_MS  = 35;
+const unsigned long LONGPRESS_MS = 1500;
+
+// ================= STATE ==================
+float iZeroOffset = 0.0f;
+bool holdMode = false;
+float holdV = 0.0f, holdI = 0.0f, holdP = 0.0f, holdAh = 0.0f;
+
+bool lastBtnReading = HIGH;
+bool btnStableState = HIGH;
+unsigned long lastDebounceTime = 0;
+unsigned long pressStartTime = 0;
+bool longPressHandled = false;
+
+float vRaw = 0.0f, iRaw = 0.0f;
+float vF = 0.0f, iF = 0.0f;
+bool filterInitialized = false;
+
+float pW = 0.0f, ah = 0.0f;
+unsigned long lastMs = 0;
+unsigned long lastLcdMs = 0;
+
+// cache text per field (anti flicker)
+char prevV[7] = "";
+char prevI[7] = "";
+char prevW[7] = "";
+char prevQ[9] = ""; // "125.4mAh" / "1.25Ah"
+
+// ================ UTIL ====================
+void splashScreen() {
+  lcd.clear();
+  lcd.setCursor(4, 0); lcd.print("SPEKTRA");
+  lcd.setCursor(2, 1); lcd.print("KOMUNIKASI");
+  delay(1400);
+  lcd.clear();
+}
+
+void showMessage(const char* l1, const char* l2, unsigned long ms = 220) {
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print(l1);
+  lcd.setCursor(0,1); lcd.print(l2);
+  delay(ms);
+  lcd.clear();
+
+  prevV[0] = '\0';
+  prevI[0] = '\0';
+  prevW[0] = '\0';
+  prevQ[0] = '\0';
+}
+
+void format5_2(float v, char out[7]) {
+  // hasil: "12.34" / " 3.21" / "-0.12"
+  if (v > 99.99f) v = 99.99f;
+  if (v < -9.99f) v = -9.99f;
+  dtostrf(v, 5, 2, out);
+  out[5] = '\0';
+}
+
+void formatQ(char out[9], float ahVal) {
+  // output fixed 8 char agar overwrite bersih
+  // "<1Ah": "125.4mAh"
+  // ">=1Ah":" 1.25Ah "
+  char num[7];
+  if (ahVal < 1.0f) {
+    float mAh = ahVal * 1000.0f;
+    if (mAh > 999.9f) mAh = 999.9f;
+    dtostrf(mAh, 5, 1, num);   // 5 char
+    // total 8 char
+    out[0]=num[0]; out[1]=num[1]; out[2]=num[2]; out[3]=num[3]; out[4]=num[4];
+    out[5]='m'; out[6]='A'; out[7]='h'; out[8]='\0';
+  } else {
+    if (ahVal > 99.99f) ahVal = 99.99f;
+    dtostrf(ahVal, 5, 2, num); // 5 char
+    out[0]=num[0]; out[1]=num[1]; out[2]=num[2]; out[3]=num[3]; out[4]=num[4];
+    out[5]='A'; out[6]='h'; out[7]=' '; out[8]='\0';
+  }
+}
+
+void printFieldIfChanged(byte col, byte row, const char* nowTxt, char* prevTxt) {
+  if (strcmp(nowTxt, prevTxt) != 0) {
+    lcd.setCursor(col, row);
+    lcd.print(nowTxt);
+    strcpy(prevTxt, nowTxt);
+  }
+}
+
+// ================ SENSOR ==================
+void readSensor() {
+  float busV = ina226.getBusVoltage();
+  float sh   = ina226.getShuntVoltage();
+  float shuntV = (fabs(sh) > 1.0f) ? (sh / 1000.0f) : sh;
+
+  float currentA = (SHUNT_OHM > 0.0f) ? (shuntV / SHUNT_OHM) : 0.0f;
+
+  vRaw = busV + shuntV + V_OFFSET;
+  iRaw = currentA - iZeroOffset + I_OFFSET;
+
+  if (vRaw < 0.0f) vRaw = 0.0f;
+  if (fabs(iRaw) < I_DEADBAND_A) iRaw = 0.0f;
+
+  if (!filterInitialized) {
+    vF = vRaw;
+    iF = iRaw;
+    filterInitialized = true;
+  } else {
+    vF += ALPHA_V * (vRaw - vF);
+    iF += ALPHA_I * (iRaw - iF);
+  }
+
+  if (fabs(iF) < I_DEADBAND_A) iF = 0.0f;
+  pW = vF * iF;
+}
+
+void integrateCharge() {
+  unsigned long nowMs = millis();
+  if (lastMs == 0) lastMs = nowMs;
+  float dtHour = (nowMs - lastMs) / 3600000.0f;
+  lastMs = nowMs;
+
+  if (!holdMode) {
+    float iForQ = (iF > 0.0f) ? iF : 0.0f;
+    ah += iForQ * dtHour;
+    if (ah < 0.0f) ah = 0.0f;
+  }
+}
+
+// =============== DISPLAY ===================
+void updateDisplay() {
+  float vShow  = holdMode ? holdV  : vF;
+  float iShow  = holdMode ? holdI  : iF;
+  float pShow  = holdMode ? holdP  : pW;
+  float ahShow = holdMode ? holdAh : ah;
+
+  char vTxt[7], iTxt[7], wTxt[7], qTxt[9];
+  format5_2(vShow, vTxt);
+  format5_2(iShow, iTxt);
+  format5_2(pShow, wTxt);
+  formatQ(qTxt, ahShow);
+
+  // layout:
+  // row0: [0..4]V [7..11]A [13..15]=HLD(optional)
+  // row1: [0..4]W [8..15]=Q
+  printFieldIfChanged(0, 0, vTxt, prevV);  lcd.setCursor(5,0); lcd.print("V");
+  printFieldIfChanged(7, 0, iTxt, prevI);  lcd.setCursor(12,0); lcd.print("A");
+  printFieldIfChanged(0, 1, wTxt, prevW);  lcd.setCursor(5,1); lcd.print("W");
+  printFieldIfChanged(8, 1, qTxt, prevQ);
+
+  // HOLD tag
+  lcd.setCursor(13,0);
+  if (holdMode) lcd.print("HLD");
+  else          lcd.print("   ");
+}
+
+// ================ BUTTON ===================
+void doZeroAndResetCharge() {
+  float sh = ina226.getShuntVoltage();
+  float shuntV = (fabs(sh) > 1.0f) ? (sh / 1000.0f) : sh;
+  iZeroOffset = (SHUNT_OHM > 0.0f) ? (shuntV / SHUNT_OHM) : 0.0f;
+
+  ah = 0.0f;
+  holdMode = false;
+  filterInitialized = false;
+}
+
+void handleButton() {
+  bool reading = digitalRead(BTN_PIN);
+
+  if (reading != lastBtnReading) lastDebounceTime = millis();
+  lastBtnReading = reading;
+
+  if ((millis() - lastDebounceTime) > DEBOUNCE_MS) {
+    if (reading != btnStableState) {
+      btnStableState = reading;
+
+      if (btnStableState == LOW) {
+        pressStartTime = millis();
+        longPressHandled = false;
+      } else {
+        unsigned long d = millis() - pressStartTime;
+        if (!longPressHandled && d < LONGPRESS_MS) {
+          holdMode = !holdMode;
+          if (holdMode) {
+            holdV = vF; holdI = iF; holdP = pW; holdAh = ah;
+            showMessage("HOLD ON", "Display frozen", 170);
+          } else {
+            showMessage("HOLD OFF", "Live display", 150);
+          }
+        }
+      }
+    }
+  }
+
+  if (btnStableState == LOW && !longPressHandled) {
+    if ((millis() - pressStartTime) >= LONGPRESS_MS) {
+      doZeroAndResetCharge();
+      longPressHandled = true;
+      showMessage("ZERO + RESET Q", "Ready", 220);
+    }
+  }
+}
+
+// ============== SETUP/LOOP =================
+void setup() {
+  Wire.begin();
+  Wire.setClock(100000); // stabil
+
+  pinMode(BTN_PIN, INPUT_PULLUP);
+
+  lcd.init();
+  lcd.backlight();
+
+  splashScreen();
+
+  lcd.setCursor(0,0); lcd.print("Init INA226...");
+  lcd.setCursor(0,1); lcd.print("INA:0x44 LCD:27");
+
+  if (!ina226.begin()) {
+    lcd.clear();
+    lcd.setCursor(0,0); lcd.print("INA226 ERROR");
+    lcd.setCursor(0,1); lcd.print("Check I2C wiring");
+    while (1) delay(100);
+  }
+
+  delay(250);
+  lcd.clear();
+
+  lastMs = millis();
+  lastLcdMs = millis();
+}
+
+void loop() {
+  readSensor();
+  integrateCharge();
+  handleButton();
+
+  if (millis() - lastLcdMs >= 250) {
+    lastLcdMs = millis();
+    updateDisplay();
+  }
+}
