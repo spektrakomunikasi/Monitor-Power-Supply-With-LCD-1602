@@ -1,0 +1,14 @@
+# Wiring Notes
+
+## Jalur Arus Besar
+- Jalur shunt dibuat pendek dan lebar
+- Hindari lewat via kecil beruntun
+- Pisahkan jalur arus besar dari jalur sinyal I2C
+
+## Kelvin Sense (sangat disarankan)
+- Ambil sense INA226 langsung dari kaki shunt (bukan dari jalur power yang jauh)
+- Gunakan jalur sense tipis, simetris, dan jauh dari switching noise
+
+## Grounding
+- Gunakan star ground jika memungkinkan
+- Satukan ground logic dan power di titik yang terkendali
